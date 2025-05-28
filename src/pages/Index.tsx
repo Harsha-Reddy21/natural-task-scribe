@@ -7,8 +7,9 @@ import { Task } from '@/types/Task';
 const Index = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  const handleAddTask = (task: Task) => {
-    setTasks(prev => [...prev, { ...task, id: Date.now().toString() }]);
+  const handleAddTask = (taskData: Omit<Task, 'id'>) => {
+    const newTask: Task = { ...taskData, id: Date.now().toString() };
+    setTasks(prev => [...prev, newTask]);
   };
 
   const handleUpdateTask = (updatedTask: Task) => {

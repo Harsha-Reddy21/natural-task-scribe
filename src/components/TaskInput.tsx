@@ -8,7 +8,7 @@ import { Task } from '@/types/Task';
 import { Plus } from 'lucide-react';
 
 interface TaskInputProps {
-  onAddTask: (task: Task) => void;
+  onAddTask: (task: Omit<Task, 'id'>) => void;
 }
 
 const TaskInput: React.FC<TaskInputProps> = ({ onAddTask }) => {
