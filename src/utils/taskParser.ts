@@ -2,9 +2,10 @@
 import { Task } from '@/types/Task';
 import OpenAI from 'openai';
 
-// Initialize OpenAI client
+// For a frontend-only app, you'll need to provide your API key
+// Note: In production, this should be handled through a backend proxy for security
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'your-api-key-here',
+  apiKey: 'your-openai-api-key-here', // Replace with your actual API key
   dangerouslyAllowBrowser: true // Note: In production, use a backend proxy
 });
 
