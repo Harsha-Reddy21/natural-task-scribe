@@ -1,149 +1,90 @@
+
 import { Task } from '@/types/Task';
+import OpenAI from 'openai';
 
-export function parseNaturalLanguageTask(input: string): Omit<Task, 'id'> {
-  console.log('Parsing input:', input);
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || 'your-api-key-here',
+  dangerouslyAllowBrowser: true // Note: In production, use a backend proxy
+});
+
+export async function parseNaturalLanguageTask(input: string): Promise<Omit<Task, 'id'>> {
+  console.log('Parsing input with OpenAI:', input);
   
-  // Default values
-  let name = input;
-  let assignee = 'Unassigned';
-  let dueDate = 'No due date';
-  let dueTime = 'No time specified';
-  let priority: 'P1' | 'P2' | 'P3' | 'P4' = 'P3';
+  const prompt = `Parse the following task description and extract information in JSON format.
 
-  // Extract priority (P1, P2, P3, P4)
-  const priorityMatch = input.match(/\b(P[1-4])\b/i);
-  if (priorityMatch) {
-    priority = priorityMatch[1].toUpperCase() as 'P1' | 'P2' | 'P3' | 'P4';
-    input = input.replace(/\b(P[1-4])\b/i, '').trim();
-  }
+Task: "${input}"
 
-  // Extract time patterns
-  const timePatterns = [
-    /\b(\d{1,2}):?(\d{0,2})\s*(am|pm)\b/i,
-    /\b(\d{1,2})\s*(am|pm)\b/i,
-    /\b(\d{1,2}):(\d{2})\b/
-  ];
+Extract the following information:
+- name: The main task description (remove assignee and date/time from this)
+- assignee: Person's name who should do the task (if not specified, use "Unassigned")
+- dueDate: Date in format "Day, Month DD, YYYY" (if not specified, use "No due date")
+- dueTime: Time in 24-hour format "HH:MM" (if not specified, use "No time specified")
+- priority: P1, P2, P3, or P4 (if not specified, use "P3")
 
-  let timeMatch;
-  for (const pattern of timePatterns) {
-    timeMatch = input.match(pattern);
-    if (timeMatch) {
-      dueTime = timeMatch[0];
-      input = input.replace(pattern, '').trim();
-      break;
-    }
-  }
+Return ONLY valid JSON in this exact format:
+{
+  "name": "task name here",
+  "assignee": "person name or Unassigned",
+  "dueDate": "formatted date or No due date", 
+  "dueTime": "HH:MM or No time specified",
+  "priority": "P1|P2|P3|P4"
+}`;
 
-  // Extract date patterns
-  const datePatterns = [
-    /\b(\d{1,2})(st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\b/i,
-    /\b(today|tomorrow|yesterday)\b/i,
-    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
-    /\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/,
-    /\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/
-  ];
-
-  let dateMatch;
-  for (const pattern of datePatterns) {
-    dateMatch = input.match(pattern);
-    if (dateMatch) {
-      dueDate = dateMatch[0];
-      input = input.replace(pattern, '').trim();
-      break;
-    }
-  }
-
-  // Extract assignee (look for names after common keywords or capitalized words)
-  const assigneePatterns = [
-    /\b(by|for|to|assign to|assigned to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
-    /\b([A-Z][a-z]+)\s+(?:by|tomorrow|today|\d)/,
-    /\b([A-Z][a-z]+)(?:\s+(?:by|tomorrow|today))/i
-  ];
-
-  let assigneeMatch;
-  for (const pattern of assigneePatterns) {
-    assigneeMatch = input.match(pattern);
-    if (assigneeMatch) {
-      assignee = assigneeMatch[assigneeMatch.length - 1].trim();
-      input = input.replace(pattern, (match) => {
-        // Keep the keyword but remove the name
-        if (match.toLowerCase().includes('by') || match.toLowerCase().includes('for') || match.toLowerCase().includes('to')) {
-          return '';
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are a task parser. Return only valid JSON without any additional text or formatting."
+        },
+        {
+          role: "user", 
+          content: prompt
         }
-        return match.replace(assignee, '').trim();
-      }).trim();
-      break;
+      ],
+      temperature: 0.1,
+      max_tokens: 200
+    });
+
+    const response = completion.choices[0].message.content;
+    console.log('OpenAI response:', response);
+    
+    if (response) {
+      const parsedData = JSON.parse(response);
+      console.log('Parsed result:', parsedData);
+      
+      return {
+        name: parsedData.name || input,
+        assignee: parsedData.assignee || 'Unassigned',
+        dueDate: parsedData.dueDate || 'No due date',
+        dueTime: parsedData.dueTime || 'No time specified',
+        priority: parsedData.priority || 'P3',
+        originalText: input
+      };
     }
+  } catch (error) {
+    console.error('Error parsing with OpenAI:', error);
+    
+    // Fallback to basic parsing if OpenAI fails
+    return {
+      name: input,
+      assignee: 'Unassigned',
+      dueDate: 'No due date',
+      dueTime: 'No time specified',
+      priority: 'P3',
+      originalText: input
+    };
   }
 
-  // Clean up task name
-  name = input
-    .replace(/\b(by|for|to|assign to|assigned to)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // If name is empty, use original input
-  if (!name) {
-    name = input;
-  }
-
-  // Format time properly
-  if (dueTime !== 'No time specified') {
-    dueTime = formatTime(dueTime);
-  }
-
-  // Format date properly
-  if (dueDate !== 'No due date') {
-    dueDate = formatDate(dueDate);
-  }
-
-  console.log('Parsed result:', { name, assignee, dueDate, dueTime, priority });
-
+  // Default fallback
   return {
-    name,
-    assignee,
-    dueDate,
-    dueTime,
-    priority,
+    name: input,
+    assignee: 'Unassigned', 
+    dueDate: 'No due date',
+    dueTime: 'No time specified',
+    priority: 'P3',
     originalText: input
   };
-}
-
-function formatTime(timeStr: string): string {
-  const match = timeStr.match(/(\d{1,2}):?(\d{0,2})?\s*(am|pm)?/i);
-  if (!match) return timeStr;
-
-  let hours = parseInt(match[1]);
-  const minutes = match[2] ? parseInt(match[2]) : 0;
-  const period = match[3]?.toLowerCase() || '';
-
-  if (period === 'pm' && hours !== 12) hours += 12;
-  if (period === 'am' && hours === 12) hours = 0;
-
-  const formattedHours = hours.toString().padStart(2, '0');
-  const formattedMinutes = minutes.toString().padStart(2, '0');
-  
-  return `${formattedHours}:${formattedMinutes}`;
-}
-
-function formatDate(dateStr: string): string {
-  const today = new Date();
-  
-  if (dateStr.toLowerCase() === 'today') {
-    return today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  }
-  
-  if (dateStr.toLowerCase() === 'tomorrow') {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    return tomorrow.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  }
-
-  // For other dates, try to parse and format them
-  const parsed = new Date(dateStr);
-  if (!isNaN(parsed.getTime())) {
-    return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  }
-
-  return dateStr;
 }

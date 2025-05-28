@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { parseNaturalLanguageTask } from '@/utils/taskParser';
 import { Task } from '@/types/Task';
-import { Plus } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 
 interface TaskInputProps {
   onAddTask: (task: Omit<Task, 'id'>) => void;
@@ -13,18 +13,26 @@ interface TaskInputProps {
 
 const TaskInput: React.FC<TaskInputProps> = ({ onAddTask }) => {
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim()) {
-      const parsedTask = parseNaturalLanguageTask(input.trim());
-      onAddTask(parsedTask);
-      setInput('');
+    if (input.trim() && !isLoading) {
+      setIsLoading(true);
+      try {
+        const parsedTask = await parseNaturalLanguageTask(input.trim());
+        onAddTask(parsedTask);
+        setInput('');
+      } catch (error) {
+        console.error('Error parsing task:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
       e.preventDefault();
       handleSubmit(e);
     }
@@ -46,14 +54,19 @@ const TaskInput: React.FC<TaskInputProps> = ({ onAddTask }) => {
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
               className="flex-1 h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+              disabled={isLoading}
             />
             <Button 
               type="submit" 
-              disabled={!input.trim()}
+              disabled={!input.trim() || isLoading}
               className="h-12 px-6 bg-blue-600 hover:bg-blue-700 transition-colors"
             >
-              <Plus className="w-5 h-5 mr-2" />
-              Add Task
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              ) : (
+                <Plus className="w-5 h-5 mr-2" />
+              )}
+              {isLoading ? 'Parsing...' : 'Add Task'}
             </Button>
           </div>
         </div>
