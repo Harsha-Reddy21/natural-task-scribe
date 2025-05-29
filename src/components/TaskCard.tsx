@@ -1,11 +1,10 @@
-
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Task } from '@/types/Task';
-import { Calendar, Clock, User, Trash2, Edit3, Check, X } from 'lucide-react';
+import { Calendar, User, Trash2, Edit3, Check, X } from 'lucide-react';
 
 interface TaskCardProps {
   task: Task;
@@ -40,8 +39,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onUpdate, onDelete }) => {
   return (
     <Card className="p-6 hover:shadow-md transition-all duration-200 border border-gray-200 bg-white">
       <div className="flex items-start justify-between">
-        <div className="flex-1 space-y-3">
-          {/* Task Name */}
+        <div className="flex-1 space-y-4">
+          {/* Task Name and Priority */}
           <div className="flex items-center gap-3">
             {isEditing ? (
               <Input
@@ -59,7 +58,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onUpdate, onDelete }) => {
           </div>
 
           {/* Task Details */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             {/* Assignee */}
             <div className="flex items-center gap-2 text-gray-600">
               <User className="w-4 h-4" />
@@ -86,29 +85,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onUpdate, onDelete }) => {
                   className="text-sm h-8"
                 />
               ) : (
-                <span>{task.dueDate}</span>
-              )}
-            </div>
-
-            {/* Due Time */}
-            <div className="flex items-center gap-2 text-gray-600">
-              <Clock className="w-4 h-4" />
-              {isEditing ? (
-                <Input
-                  value={editedTask.dueTime}
-                  onChange={(e) => setEditedTask({ ...editedTask, dueTime: e.target.value })}
-                  placeholder="Due time"
-                  className="text-sm h-8"
-                />
-              ) : (
-                <span>{task.dueTime}</span>
+                <span>{task.dueDate === 'No due date' ? 'No deadline set' : task.dueDate}</span>
               )}
             </div>
           </div>
 
           {/* Original Text */}
           <div className="text-xs text-gray-400 italic">
-            Original: "{task.originalText}"
+            {/* Original: "{task.originalText}" */}
           </div>
         </div>
 

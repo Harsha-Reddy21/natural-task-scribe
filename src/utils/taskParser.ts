@@ -1,91 +1,113 @@
-
 import { Task } from '@/types/Task';
-import OpenAI from 'openai';
+import { parseTaskText } from '@/lib/openai';
 
-// For a frontend-only app, you'll need to provide your API key
-// Note: In production, this should be handled through a backend proxy for security
-const openai = new OpenAI({
-  apiKey: 'your-openai-api-key-here', // Replace with your actual API key
-  dangerouslyAllowBrowser: true // Note: In production, use a backend proxy
-});
-
+/**
+ * Parses a natural language task description into structured task data using OpenAI LLM.
+ * @param input The natural language task description
+ * @returns A Promise resolving to the parsed task data
+ */
 export async function parseNaturalLanguageTask(input: string): Promise<Omit<Task, 'id'>> {
-  console.log('Parsing input with OpenAI:', input);
-  
-  const prompt = `Parse the following task description and extract information in JSON format.
-
-Task: "${input}"
-
-Extract the following information:
-- name: The main task description (remove assignee and date/time from this)
-- assignee: Person's name who should do the task (if not specified, use "Unassigned")
-- dueDate: Date in format "Day, Month DD, YYYY" (if not specified, use "No due date")
-- dueTime: Time in 24-hour format "HH:MM" (if not specified, use "No time specified")
-- priority: P1, P2, P3, or P4 (if not specified, use "P3")
-
-Return ONLY valid JSON in this exact format:
-{
-  "name": "task name here",
-  "assignee": "person name or Unassigned",
-  "dueDate": "formatted date or No due date", 
-  "dueTime": "HH:MM or No time specified",
-  "priority": "P1|P2|P3|P4"
-}`;
-
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are a task parser. Return only valid JSON without any additional text or formatting."
-        },
-        {
-          role: "user", 
-          content: prompt
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 200
-    });
+    // Use OpenAI LLM to parse the input
+    const parsedData = await parseTaskText(input);
+    
+    // Convert the parsed data to our Task format
+    const taskData: Omit<Task, 'id'> = {
+      name: parsedData.title || input,
+      assignee: parsedData.assignee || 'Unassigned',
+      dueDate: formatDate(parsedData.date),
+      priority: parsedData.priority === 'high' ? 'P1' : 
+               parsedData.priority === 'medium' ? 'P2' : 
+               parsedData.priority === 'low' ? 'P3' : 'P3',
+      originalText: input
+    };
 
-    const response = completion.choices[0].message.content;
-    console.log('OpenAI response:', response);
-    
-    if (response) {
-      const parsedData = JSON.parse(response);
-      console.log('Parsed result:', parsedData);
-      
-      return {
-        name: parsedData.name || input,
-        assignee: parsedData.assignee || 'Unassigned',
-        dueDate: parsedData.dueDate || 'No due date',
-        dueTime: parsedData.dueTime || 'No time specified',
-        priority: parsedData.priority || 'P3',
-        originalText: input
-      };
-    }
+    return taskData;
   } catch (error) {
-    console.error('Error parsing with OpenAI:', error);
+    console.error('Error in parseNaturalLanguageTask:', error);
     
-    // Fallback to basic parsing if OpenAI fails
+    // Provide a fallback task if parsing fails
     return {
       name: input,
       assignee: 'Unassigned',
       dueDate: 'No due date',
-      dueTime: 'No time specified',
       priority: 'P3',
       originalText: input
     };
   }
-
-  // Default fallback
-  return {
-    name: input,
-    assignee: 'Unassigned', 
-    dueDate: 'No due date',
-    dueTime: 'No time specified',
-    priority: 'P3',
-    originalText: input
-  };
 }
+
+/**
+ * Helper function to format a date string from the LLM response
+ * @param dateStr The date string from LLM
+ * @returns Formatted date string
+ */
+function formatDate(dateStr: string | undefined): string {
+  if (!dateStr) return 'No due date';
+
+  // Handle relative dates
+  const lowerDateStr = dateStr.toLowerCase();
+  if (lowerDateStr.includes('tomorrow')) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  // Try parsing as regular date
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    return 'No due date';
+  }
+
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+/**
+ * Helper function to format a date string from the LLM response
+ * @param dateStr The date string from LLM
+ * @returns Formatted date string or null if invalid
+ */
+export function formatDateFromLLM(dateStr: string | undefined): Date | null {
+  if (!dateStr) return null;
+
+  // Handle relative dates
+  const lowerDateStr = dateStr.toLowerCase();
+  if (lowerDateStr.includes('tomorrow')) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Parse time if specified (e.g., "tomorrow 3:00 pm")
+    const timeMatch = dateStr.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+    if (timeMatch) {
+      const [_, hours, minutes, meridiem] = timeMatch;
+      let hour = parseInt(hours);
+      
+      // Convert 12-hour format to 24-hour format
+      if (meridiem) {
+        if (meridiem.toLowerCase() === 'pm' && hour < 12) hour += 12;
+        if (meridiem.toLowerCase() === 'am' && hour === 12) hour = 0;
+      }
+      
+      tomorrow.setHours(hour, parseInt(minutes), 0, 0);
+    } else {
+      // Default to start of day if no time specified
+      tomorrow.setHours(0, 0, 0, 0);
+    }
+    
+    return tomorrow;
+  }
+
+  // Try parsing as regular date
+  const date = new Date(dateStr);
+  return isNaN(date.getTime()) ? null : date;
+} 
